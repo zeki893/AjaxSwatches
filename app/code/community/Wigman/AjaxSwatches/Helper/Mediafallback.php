@@ -104,7 +104,7 @@ class Wigman_AjaxSwatches_Helper_Mediafallback extends Mage_ConfigurableSwatches
 			if ($image == 'no_selection') {
 				$image = null;
 			}
-			// return 'https://www.themogan.com/media/catalog/product/cache/1/small_image/350x525/9df78eab33525d08d6e5fb8d27136e95/d/n/dnb-y10832_black_1.jpg';
+			
 			if ($hasTypeData || $placeholder || $image) {
 				$helper = Mage::helper('catalog/image')
 					->init($product, $type, $image)
