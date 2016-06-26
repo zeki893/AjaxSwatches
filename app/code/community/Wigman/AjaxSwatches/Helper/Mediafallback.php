@@ -4,6 +4,136 @@
  */
 class Wigman_AjaxSwatches_Helper_Mediafallback extends Mage_ConfigurableSwatches_Helper_Mediafallback
 {
+    
+       public function getConfigurableImagesFallbackArray(Mage_Catalog_Model_Product $product, array $imageTypes,
+        $keepFrame = false
+    ) {
+        if (!$product->hasConfigurableImagesFallbackArray()) {
+            $mapping = $product->getChildAttributeLabelMapping();
+
+            $mediaGallery = $product->getMediaGallery();
+
+            if (!isset($mediaGallery['images'])) {
+                return array(); //nothing to do here
+            }
+
+            // ensure we only attempt to process valid image types we know about
+            $imageTypes = array_intersect(array('image', 'small_image'), $imageTypes);
+
+            $imagesByLabel = array();
+            $imageHaystack = array_map(function ($value) {
+                return Mage_ConfigurableSwatches_Helper_Data::normalizeKey($value['label']);
+            }, $mediaGallery['images']);
+
+            // load images from the configurable product for swapping
+            foreach ($mapping as $map) {
+                $imagePath = null;
+
+                //search by store-specific label and then default label if nothing is found
+                $imageKey = array_search($map['label'], $imageHaystack);
+                if ($imageKey === false) {
+                    $imageKey = array_search($map['default_label'], $imageHaystack);
+                }
+
+                //assign proper image file if found
+                if ($imageKey !== false) {
+                    $imagePath = $mediaGallery['images'][$imageKey]['file'];
+                }
+
+                $imagesByLabel[$map['label']] = array(
+                    'configurable_product' => array(
+                        Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_SMALL => null,
+                        Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_BASE => null,
+                    ),
+                    'products' => $map['product_ids'],
+                );
+
+                if ($imagePath) {
+                    $imagesByLabel[$map['label']]['configurable_product']
+                        [Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_SMALL] =
+                            $this->_resizeProductImage($product, 'small_image', $keepFrame, $imagePath);
+
+                    $imagesByLabel[$map['label']]['configurable_product']
+                        [Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_BASE] =
+                            $this->_resizeProductImage($product, 'image', $keepFrame, $imagePath);
+                }
+            }
+
+            $imagesByType = array(
+                'image' => array(),
+                'small_image' => array(),
+            );
+
+            // iterate image types to build image array, normally one type is passed in at a time, but could be two
+            foreach ($imageTypes as $imageType) {
+                // load image from the configurable product's children for swapping
+                /* @var $childProduct Mage_Catalog_Model_Product */
+                if ($product->hasChildrenProducts()) {
+                    foreach ($product->getChildrenProducts() as $childProduct) {
+                        // if ($image = $this->_resizeProductImage($childProduct, $imageType, $keepFrame)) {
+						$imgsize = 0;
+						if(@$_POST['pids']) $imgsize = 350;
+                        if ($image = $this->_resizeProductImage($childProduct, $imageType, $keepFrame, null, false, $imgsize)) {
+                            $imagesByType[$imageType][$childProduct->getId()] = $image;
+                        }
+                    }
+                }
+
+                // load image from configurable product for swapping fallback
+                if ($image = $this->_resizeProductImage($product, $imageType, $keepFrame, null, true)) {
+                    $imagesByType[$imageType][$product->getId()] = $image;
+                }
+            }
+
+            $array = array(
+                'option_labels' => $imagesByLabel,
+                Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_SMALL => $imagesByType['small_image'],
+                Mage_ConfigurableSwatches_Helper_Productimg::MEDIA_IMAGE_TYPE_BASE => $imagesByType['image'],
+            );
+
+            $product->setConfigurableImagesFallbackArray($array);
+        }
+
+        return $product->getConfigurableImagesFallbackArray();
+    }	 
+
+	 protected function _resizeProductImage($product, $type, $keepFrame, $image = null, $placeholder = false, $size2 = null)
+		{
+			
+			$hasTypeData = $product->hasData($type) && $product->getData($type) != 'no_selection';
+			if ($image == 'no_selection') {
+				$image = null;
+			}
+			
+			if ($hasTypeData || $placeholder || $image) {
+				$helper = Mage::helper('catalog/image')
+					->init($product, $type, $image)
+					->keepFrame(($hasTypeData || $image) ? $keepFrame : false)  // don't keep frame if placeholder
+				;
+
+				$size = Mage::getStoreConfig(Mage_Catalog_Helper_Image::XML_NODE_PRODUCT_BASE_IMAGE_WIDTH);
+				// print_r($size );
+				if ($type == 'small_image') {
+					$size = Mage::getStoreConfig(Mage_Catalog_Helper_Image::XML_NODE_PRODUCT_SMALL_IMAGE_WIDTH);
+				}
+				
+				if (is_numeric($size) || $size2) {
+					if($size2) {
+						// $helper->constrainOnly(true)->resize($size2);
+						$helper->keepFrame(true)->constrainOnly(true)->resize(350, 525);
+					}
+					if(!$size2 && is_numeric($size)){
+						$helper->constrainOnly(true)->resize($size);
+					}
+					// $helper->constrainOnly(true)->resize($size);
+				}
+				return (string)$helper;
+			}
+			return false;
+		}
+	
+    
+    
     /**
      * Set child_attribute_label_mapping on products with attribute label -> product mapping
      * Depends on following product data:
